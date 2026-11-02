@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>서울 따릉이 대여소 현황</title>
+    <!-- 스타일링을 위한 Tailwind CSS 로드 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 기본 폰트 설정 및 테이블 스크롤 시 헤더 고정 */
+        body { font-family: 'Inter', sans-serif; }
+        .table-container { max-height: 600px; overflow-y: auto; }
+        th { position: sticky; top: 0; background-color: #f3f4f6; z-index: 10; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4 sm:p-8">
+
+    <div class="max-w-5xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
+        <!-- 헤더 영역 -->
+        <div class="p-6 bg-blue-600 text-white flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold flex items-center gap-2">
+                    🚲 서울 따릉이 대여소 현황
+                    <!-- 샘플 데이터 표시용 배지 (기본 숨김) -->
+                    <span id="sample-badge" class="hidden text-xs bg-yellow-400 text-yellow-900 px-2 py-1 rounded-full font-semibold">
+                        샘플 데이터
+                    </span>
+                </h1>
+                <p class="text-blue-100 text-sm mt-1">
+                    마지막 갱신 시각: <span id="last-update-time" class="font-medium">-</span>
+                </p>
+            </div>
+            
+            <button id="refresh-btn" class="bg-white text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg font-medium shadow transition-colors flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                새로고침
+            </button>
+        </div>
+
+        <!-- 컨트롤 영역 (검색) -->
+        <div class="p-6 border-b border-gray-200">
+            <div class="relative">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+                <input type="text" id="search-input" placeholder="대여소 이름 검색..." 
+                    class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow">
+            </div>
+        </div>
+
+        <!-- 데이터 테이블 영역 -->
+        <div class="table-container">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="text-gray-700 border-b border-gray-200 text-sm sm:text-base">
+                        <th class="p-4 font-semibold">대여소 이름</th>
+                        <th class="p-4 font-semibold text-center">거치대 수</th>
+                        <th class="p-4 font-semibold text-center">현재 자전거 수</th>
+                        <th class="p-4 font-semibold text-center">거치율 (%)</th>
+                    </tr>
+                </thead>
+                <tbody id="bike-table-body" class="divide-y divide-gray-200 text-gray-800">
+                    <!-- 데이터가 여기에 동적으로 렌더링됩니다 -->
+                    <tr>
+                        <td colspan="4" class="p-8 text-center text-gray-500">데이터를 불러오는 중입니다...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // 요소 참조
+        const tableBody = document.getElementById('bike-table-body');
+        const searchInput = document.getElementById('search-input');
+        const refreshBtn = document.getElementById('refresh-btn');
+        const lastUpdateTime = document.getElementById('last-update-time');
+        const sampleBadge = document.getElementById('sample-badge');
+
+        // 상태 관리
+        let currentBikeData = [];
+
+        // 샘플 데이터 (API 호출 실패 시 폴백으로 사용)
+        const sampleData = {
+            "rentBikeStatus": {
+                "list_total_count": 5,
+                "RESULT": {
+                    "CODE": "INFO-000",
+                    "MESSAGE": "정상 처리되었습니다."
+                },
+                "row": [
+                    {
+                        "rackTotCnt": "15",
+                        "stationName": "102. 망원역 1번출구 앞",
+                        "parkingBikeTotCnt": "11",
+                        "shared": "73",
+                        "stationLatitude": "37.55564880",
+                        "stationLongitude": "126.91062927",
+                        "stationId": "ST-4"
+                    },
+                    {
+                        "rackTotCnt": "14",
+                        "stationName": "103. 망원역 2번출구 앞",
+                        "parkingBikeTotCnt": "12",
+                        "shared": "86",
+                        "stationLatitude": "37.55495071",
+                        "stationLongitude": "126.91083527",
+                        "stationId": "ST-5"
+                    },
+                    {
+                        "rackTotCnt": "13",
+                        "stationName": "104. 합정역 1번출구 앞",
+                        "parkingBikeTotCnt": "16",
+                        "shared": "123",
+                        "stationLatitude": "37.55073929",
+                        "stationLongitude": "126.91508484",
+                        "stationId": "ST-6"
+                    },
+                    {
+                        "rackTotCnt": "5",
+                        "stationName": "105. 합정역 5번출구 앞",
+                        "parkingBikeTotCnt": "0",
+                        "shared": "0",
+                        "stationLatitude": "37.55000687",
+                        "stationLongitude": "126.91482544",
+                        "stationId": "ST-7"
+                    },
+                    {
+                        "rackTotCnt": "12",
+                        "stationName": "106. 합정역 7번출구 앞",
+                        "parkingBikeTotCnt": "1",
+                        "shared": "8",
+                        "stationLatitude": "37.54864502",
+                        "stationLongitude": "126.91282654",
+                        "stationId": "ST-8"
+                    }
+                ]
+            }
+        };
+
+        // 데이터 렌더링 함수
+        function renderTable(data, filterText = "") {
+            tableBody.innerHTML = ''; // 테이블 초기화
+
+            // 검색어 필터링
+            const filteredData = data.filter(item => 
+                item.stationName.toLowerCase().includes(filterText.toLowerCase())
+            );
+
+            if (filteredData.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-gray-500">검색 결과가 없습니다.</td></tr>`;
+                return;
+            }
+
+            // 행 생성
+            filteredData.forEach(item => {
+                const tr = document.createElement('tr');
+                
+                // 문자열을 숫자로 변환
+                const rackTotCnt = Number(item.rackTotCnt);
+                const parkingBikeTotCnt = Number(item.parkingBikeTotCnt);
+                const shared = Number(item.shared);
+
+                // 자전거가 0대인 경우 스타일 다르게 적용
+                const isZeroBike = parkingBikeTotCnt === 0;
+                if (isZeroBike) {
+                    tr.className = "bg-red-50 hover:bg-red-100 transition-colors";
+                } else {
+                    tr.className = "hover:bg-gray-50 transition-colors";
+                }
+
+                // 텍스트 색상 (0대일 경우 붉은 텍스트 강조)
+                const textClass = isZeroBike ? "text-red-700 font-medium" : "";
+                const bikeCountClass = isZeroBike ? "text-red-600 font-bold" : "text-blue-600 font-bold";
+
+                tr.innerHTML = `
+                    <td class="p-4 ${textClass}">${item.stationName}</td>
+                    <td class="p-4 text-center text-gray-500">${rackTotCnt}</td>
+                    <td class="p-4 text-center ${bikeCountClass}">${parkingBikeTotCnt}</td>
+                    <td class="p-4 text-center text-gray-500">${shared}%</td>
+                `;
+                tableBody.appendChild(tr);
+            });
+        }
+
+        // 시간 업데이트 함수
+        function updateTime() {
+            const now = new Date();
+            lastUpdateTime.textContent = now.toLocaleTimeString('ko-KR', { hour12: false });
+        }
+
+        // 데이터 페치 함수
+        async function fetchBikeData() {
+            try {
+                // UI를 로딩 상태로 변경
+                tableBody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-gray-500">데이터를 불러오는 중입니다...</td></tr>`;
+                
+                const response = await fetch('/api/bike');
+                
+                // HTTP 응답이 정상이 아닌 경우 에러 던지기
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                
+                const data = await response.json();
+                currentBikeData = data.rentBikeStatus.row;
+                
+                sampleBadge.classList.add('hidden'); // 성공 시 배지 숨김
+                
+            } catch (error) {
+                console.warn('데이터 로드 실패, 샘플 데이터로 대체합니다:', error);
+                // 실패 시 샘플 데이터 적용
+                currentBikeData = sampleData.rentBikeStatus.row;
+                sampleBadge.classList.remove('hidden'); // 샘플 배지 표시
+            } finally {
+                // 데이터 렌더링 및 시간 업데이트
+                renderTable(currentBikeData, searchInput.value);
+                updateTime();
+            }
+        }
+
+        // 이벤트 리스너 등록
+        refreshBtn.addEventListener('click', fetchBikeData);
+        
+        searchInput.addEventListener('input', (e) => {
+            renderTable(currentBikeData, e.target.value);
+        });
+
+        // 초기 데이터 로드
+        window.addEventListener('DOMContentLoaded', fetchBikeData);
+
+    </script>
+</body>
+</html>
