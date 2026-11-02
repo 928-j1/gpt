@@ -53,10 +53,10 @@
             <table class="w-full text-left border-collapse">
                 <thead>
                     <tr class="text-gray-700 border-b border-gray-200 text-sm sm:text-base">
-                        <th class="p-4 font-semibold">대여소 이름</th>
-                        <th class="p-4 font-semibold text-center">거치대 수</th>
-                        <th class="p-4 font-semibold text-center">현재 자전거 수</th>
-                        <th class="p-4 font-semibold text-center">거치율 (%)</th>
+                        <th class="p-4 font-semibold w-1/2">대여소 이름</th>
+                        <th class="p-4 font-semibold text-center whitespace-nowrap">거치대 수</th>
+                        <th class="p-4 font-semibold text-center whitespace-nowrap">현재 자전거 수</th>
+                        <th class="p-4 font-semibold text-center whitespace-nowrap">거치율 (%)</th>
                     </tr>
                 </thead>
                 <tbody id="bike-table-body" class="divide-y divide-gray-200 text-gray-800">
@@ -142,45 +142,84 @@
         function renderTable(data, filterText = "") {
             tableBody.innerHTML = ''; // 테이블 초기화
 
-            // 검색어 필터링
-            const filteredData = data.filter(item => 
-                item.stationName.toLowerCase().includes(filterText.toLowerCase())
+            if (!data || data.length === 0) return;
+
+            // 1. 빈 자리가 가장 많은 상위 5개 추출 (빈 자리 = 거치대 수 - 현재 자전거 수)
+            const sortedByEmpty = [...data].sort((a, b) => {
+                const emptyA = Number(a.rackTotCnt) - Number(a.parkingBikeTotCnt);
+                const emptyB = Number(b.rackTotCnt) - Number(b.parkingBikeTotCnt);
+                return emptyB - emptyA;
+            });
+            
+            // 데이터가 5개 이하일 수도 있으므로 안전하게 slice 처리
+            const top5Data = sortedByEmpty.slice(0, 5);
+            const top5Ids = new Set(top5Data.map(item => item.stationId));
+
+            // 2. 검색어 필터링 (Top 5는 상단에 고정하고, 나머지 항목에서만 검색 적용)
+            const filteredOtherData = data.filter(item => 
+                !top5Ids.has(item.stationId) && item.stationName.toLowerCase().includes(filterText.toLowerCase())
             );
 
-            if (filteredData.length === 0) {
-                tableBody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-gray-500">검색 결과가 없습니다.</td></tr>`;
-                return;
-            }
-
-            // 행 생성
-            filteredData.forEach(item => {
+            // 행 생성 도우미 함수
+            const appendRow = (item, isTop5, rank) => {
                 const tr = document.createElement('tr');
                 
-                // 문자열을 숫자로 변환
                 const rackTotCnt = Number(item.rackTotCnt);
                 const parkingBikeTotCnt = Number(item.parkingBikeTotCnt);
                 const shared = Number(item.shared);
+                const emptySpots = rackTotCnt - parkingBikeTotCnt;
 
-                // 자전거가 0대인 경우 스타일 다르게 적용
                 const isZeroBike = parkingBikeTotCnt === 0;
-                if (isZeroBike) {
-                    tr.className = "bg-red-50 hover:bg-red-100 transition-colors";
+                
+                // 스타일 분기 (Top 5, 자전거 0대, 기본)
+                if (isTop5) {
+                    tr.className = "bg-indigo-50 hover:bg-indigo-100 transition-colors border-b border-indigo-100";
+                } else if (isZeroBike) {
+                    tr.className = "bg-red-50 hover:bg-red-100 transition-colors border-b border-gray-200";
                 } else {
-                    tr.className = "hover:bg-gray-50 transition-colors";
+                    tr.className = "hover:bg-gray-50 transition-colors border-b border-gray-200";
                 }
 
-                // 텍스트 색상 (0대일 경우 붉은 텍스트 강조)
-                const textClass = isZeroBike ? "text-red-700 font-medium" : "";
-                const bikeCountClass = isZeroBike ? "text-red-600 font-bold" : "text-blue-600 font-bold";
+                // 텍스트 및 숫자 색상
+                const textClass = isZeroBike && !isTop5 ? "text-red-700 font-medium" : (isZeroBike ? "text-red-600 font-medium" : "text-gray-800");
+                const bikeCountClass = isZeroBike ? "text-red-600 font-bold" : (isTop5 ? "text-indigo-600 font-bold" : "text-blue-600 font-bold");
+                
+                // Top 5 뱃지 및 빈자리 정보 추가
+                const badge = isTop5 ? `<span class="inline-block bg-indigo-500 text-white text-[10px] font-bold mr-2 px-2 py-1 rounded-md shadow-sm">빈자리 TOP ${rank}</span>` : "";
+                const emptyText = `<span class="text-xs ${isTop5 ? 'text-indigo-600 font-semibold' : 'text-gray-400'} ml-1 whitespace-nowrap">(빈자리: ${emptySpots > 0 ? emptySpots : 0})</span>`;
 
                 tr.innerHTML = `
-                    <td class="p-4 ${textClass}">${item.stationName}</td>
+                    <td class="p-4 ${textClass} flex flex-col sm:flex-row sm:items-center gap-y-1">
+                        <div>${badge}</div>
+                        <div>
+                            <span>${item.stationName}</span> 
+                            ${emptyText}
+                        </div>
+                    </td>
                     <td class="p-4 text-center text-gray-500">${rackTotCnt}</td>
-                    <td class="p-4 text-center ${bikeCountClass}">${parkingBikeTotCnt}</td>
+                    <td class="p-4 text-center ${bikeCountClass} text-lg">${parkingBikeTotCnt}</td>
                     <td class="p-4 text-center text-gray-500">${shared}%</td>
                 `;
                 tableBody.appendChild(tr);
-            });
+            };
+
+            // Top 5 우선 렌더링
+            top5Data.forEach((item, index) => appendRow(item, true, index + 1));
+
+            // 나머지 데이터가 있을 경우 시각적 구분선 추가
+            if (filteredOtherData.length > 0 && top5Data.length > 0) {
+                const divider = document.createElement('tr');
+                divider.innerHTML = `<td colspan="4" class="py-2 px-4 bg-gray-100 text-center text-xs text-gray-500 font-semibold border-b border-gray-200">일반 대여소 목록 (검색 결과)</td>`;
+                tableBody.appendChild(divider);
+            }
+
+            // 검색된 나머지 대여소 렌더링
+            filteredOtherData.forEach(item => appendRow(item, false, 0));
+
+            // 결과가 아무것도 없을 때
+            if (top5Data.length === 0 && filteredOtherData.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-gray-500">검색 결과가 없습니다.</td></tr>`;
+            }
         }
 
         // 시간 업데이트 함수
